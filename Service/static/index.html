@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Muse Emotion Detection</title>
+    <link rel="stylesheet" href="/static/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar">
+        <div>
+          <h1>Muse Emotion Detection</h1>
+          <p id="statusText">Waiting for device.</p>
+        </div>
+        <div class="model-pill" id="modelName">model: not loaded</div>
+      </section>
+
+      <section class="controls">
+        <label class="address-field">
+          <span>Muse BLE address</span>
+          <input id="addressInput" value="00:55:DA:B6:32:68" autocomplete="off">
+        </label>
+        <button id="connectBtn">Connect Device</button>
+        <button id="disconnectBtn" class="secondary">Disconnect</button>
+        <button id="startBtn">Start Detection</button>
+        <button id="stopBtn" class="secondary">Stop Detection</button>
+      </section>
+
+      <section class="grid">
+        <article class="panel result-panel">
+          <div class="panel-title">Current Result</div>
+          <div id="emotionLabel" class="emotion-label">--</div>
+          <div id="probabilities" class="probabilities"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">Stream</div>
+          <dl class="stats">
+            <div><dt>Connection</dt><dd id="connectionState">--</dd></div>
+            <div><dt>Detection</dt><dd id="detectionState">--</dd></div>
+            <div><dt>Window</dt><dd id="windowInfo">--</dd></div>
+            <div><dt>Buffers</dt><dd id="bufferInfo">--</dd></div>
+          </dl>
+          <div id="errorText" class="error-text"></div>
+        </article>
+      </section>
+
+      <section class="panel wave-panel">
+        <div class="wave-heading">
+          <div class="panel-title">Live EEG Brain Waves</div>
+          <div id="waveStatus" class="wave-status">Waiting for EEG samples</div>
+        </div>
+        <div class="wave-canvas-wrap">
+          <canvas
+            id="eegCanvas"
+            aria-label="Live EEG waveforms for TP9, AF7, AF8, and TP10"
+          ></canvas>
+        </div>
+        <div class="wave-note">Four-second rolling view | shared relative amplitude scale</div>
+      </section>
+
+      <section class="panel history-panel">
+        <div class="panel-title">Recent Detections</div>
+        <ol id="historyList" class="history-list"></ol>
+      </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
