@@ -8,7 +8,11 @@ from typing import Any
 import joblib
 import numpy as np
 
-from Algorithm.feature_extraction import extract_feature_vector
+try:
+    from Algorithm.feature_extraction import extract_feature_vector
+except ModuleNotFoundError:
+    # Allows: python Algorithm\inference.py ...
+    from feature_extraction import extract_feature_vector
 
 
 # Default model settings
@@ -136,25 +140,95 @@ def predict_from_eeg_window(
     )
 
 
-def load_feature_vector(path: Path) -> np.ndarray:
-    """Load a feature vector from .npy, .json, .csv, or .txt."""
+def load_feature_vector(
+    path: Path,
+    index: int = 0,
+) -> tuple[np.ndarray, int | None]:
+    """Load one feature vector.
+
+    Supported formats:
+    - .npy: one feature vector
+    - .npz: a feature dataset containing X; one row is selected by --index
+    - .json: list of values or {"features": [...]}
+    - .csv/.txt: comma-separated values
+
+    Returns the feature vector and, for .npz files, the selected index.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Feature file not found: {path}")
+
     suffix = path.suffix.lower()
 
     if suffix == ".npy":
-        return np.load(path)
+        return np.asarray(np.load(path), dtype=np.float32), None
+
+    if suffix == ".npz":
+        data = np.load(path, allow_pickle=True)
+
+        if "X" not in data.files:
+            raise ValueError(
+                f"{path.name} does not contain an 'X' feature matrix."
+            )
+
+        X = np.asarray(data["X"], dtype=np.float32)
+
+        if X.ndim != 2:
+            raise ValueError(
+                f"Expected X to have shape (samples, features), got {X.shape}."
+            )
+
+        if not 0 <= index < len(X):
+            raise IndexError(
+                f"--index must be between 0 and {len(X) - 1}, got {index}."
+            )
+
+        return X[index], index
 
     if suffix == ".json":
         data = json.loads(path.read_text(encoding="utf-8"))
+
         if isinstance(data, dict):
             data = data.get("features")
-        return np.asarray(data, dtype=np.float32)
+
+        if data is None:
+            raise ValueError(
+                "JSON file must contain a feature list or a 'features' key."
+            )
+
+        return np.asarray(data, dtype=np.float32), None
 
     if suffix in {".csv", ".txt"}:
-        return np.genfromtxt(path, delimiter=",", dtype=np.float32)
+        return (
+            np.genfromtxt(path, delimiter=",", dtype=np.float32),
+            None,
+        )
 
     raise ValueError(
-        f"Unsupported feature vector file type: {path.suffix}"
+        "Unsupported feature vector file type: "
+        f"{path.suffix}. Supported: .npy, .npz, .json, .csv, .txt"
     )
+
+
+def get_actual_label_from_npz(
+    path: Path,
+    index: int,
+) -> tuple[int | None, str | None]:
+    """Return the true label for a selected .npz row when y is available."""
+    if path.suffix.lower() != ".npz":
+        return None, None
+
+    data = np.load(path, allow_pickle=True)
+
+    if "y" not in data.files:
+        return None, None
+
+    labels = np.asarray(data["y"])
+
+    if index >= len(labels):
+        return None, None
+
+    class_id = int(labels[index])
+    return class_id, LABEL_NAMES.get(class_id, str(class_id))
 
 
 def parse_feature_string(feature_string: str) -> np.ndarray:
@@ -176,6 +250,7 @@ def parse_args() -> argparse.Namespace:
         "--model",
         type=Path,
         default=TRAINED_MODEL_FILE,
+        help="Path to trained_model.pkl.",
     )
     parser.add_argument(
         "--features",
@@ -185,7 +260,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--features-file",
         type=Path,
-        help="Path to a .npy, .json, .csv, or .txt feature vector.",
+        help="Path to .npy, .npz, .json, .csv, or .txt features.",
+    )
+    parser.add_argument(
+        "--index",
+        type=int,
+        default=0,
+        help="Row to use when --features-file is a .npz dataset. Default: 0.",
     )
     parser.add_argument(
         "--window-npy",
@@ -222,11 +303,30 @@ def main() -> None:
         )
 
     elif args.features_file is not None:
-        feature_vector = load_feature_vector(args.features_file)
+        feature_vector, selected_index = load_feature_vector(
+            args.features_file,
+            index=args.index,
+        )
+
         result = predict_from_feature_vector(
             feature_vector,
             model_file=args.model,
         )
+
+        if selected_index is not None:
+            actual_class, actual_label = get_actual_label_from_npz(
+                args.features_file,
+                selected_index,
+            )
+
+            result["sample_index"] = selected_index
+
+            if actual_class is not None:
+                result["actual_class"] = actual_class
+                result["actual_label"] = actual_label
+                result["correct"] = (
+                    result["predicted_class"] == actual_class
+                )
 
     else:
         window = np.load(args.window_npy)
